@@ -1,0 +1,8 @@
+{
+  "outputDirectory": ".",
+  "functions": {
+    "api/webhook.ts": {
+      "maxDuration": 60
+    }
+  }
+}

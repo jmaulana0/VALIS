@@ -116,8 +116,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const imageBuffer = await downloadFile(largestPhoto.file_id);
         notionFileUploadId = await uploadImageToNotion(imageBuffer, 'screenshot.jpg');
       } catch (err) {
-        console.error('Image upload failed:', err);
-        // Continue without image — don't block the pipeline
+        const uploadErr = err instanceof Error ? err.message : String(err);
+        console.error('Image upload failed:', uploadErr);
+        await sendMessage(chatId, `⚠️ Image upload issue: ${uploadErr}\nContinuing without screenshot...`);
       }
     }
 

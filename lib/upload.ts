@@ -32,7 +32,8 @@ export async function uploadImageToNotion(imageBuffer: Buffer, filename: string)
 
   // Step 2: Send binary data via multipart/form-data
   const formData = new FormData();
-  formData.append('file', new Blob([imageBuffer]), filename);
+  const mimeType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg';
+  formData.append('file', new Blob([imageBuffer], { type: mimeType }), filename);
 
   const sendRes = await fetch(`${NOTION_API}/file_uploads/${fileUploadId}/send`, {
     method: 'POST',

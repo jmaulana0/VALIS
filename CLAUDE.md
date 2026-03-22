@@ -4,19 +4,26 @@
 
 VALIS (Voice-Activated Logging & Intelligent Sorting) is a Telegram bot that
 captures voice notes, transcribes them, classifies them as **actions** or
-**ideas**, and routes them to the correct Notion database. Zero manual sorting.
+**ideas**, and routes them to the correct destination. Zero manual sorting.
+
+- **Actions** → Notion (task tracking database)
+- **Ideas** → Obsidian (via GitHub sync → iCloud vault)
 
 Core loop: **speak → transcribe → classify → enrich → route**
 
 ## Architecture
 
 ```
-Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Gemini 3.1 Flash-Lite  →  Notion API
-(capture)        (webhook handler)     (transcribe)     (classify + enrich)        (store)
+Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Gemini 3.1 Flash-Lite  →  Actions: Notion API
+(capture)        (webhook handler)     (transcribe)     (classify + enrich)        Ideas:  GitHub → Obsidian
 ```
 
 Single serverless function at `api/webhook.ts` handles the entire pipeline.
-No database. No server. Notion IS the database.
+
+**Obsidian sync flow:** Vercel writes `.md` files to `jmaulana0/valis-obsidian-sync`
+via GitHub API → launchd runs `scripts/sync-to-obsidian.sh` every 5 min →
+files land in `00 - Inbox/` of the iCloud Obsidian vault → existing
+`organize-inbox.sh` sorts them.
 
 ## Tech Stack
 
@@ -26,7 +33,8 @@ No database. No server. Notion IS the database.
 | API | Vercel Serverless Function (TypeScript) |
 | Transcription | Groq Whisper `large-v3-turbo` |
 | Classification | Gemini 3.1 Flash-Lite |
-| Storage | Notion API (2 databases: Actions + Ideas) |
+| Action Storage | Notion API (Actions database) |
+| Idea Storage | GitHub API → Obsidian (iCloud vault via sync script) |
 
 ## Project Structure
 
@@ -38,7 +46,8 @@ VALIS/
 │   ├── telegram.ts             # Telegram Bot API helpers
 │   ├── transcribe.ts           # Groq Whisper transcription
 │   ├── classify.ts             # Gemini classification + enrichment
-│   └── notion.ts               # Notion API writes
+│   ├── notion.ts               # Notion API writes (actions)
+│   └── obsidian.ts             # GitHub API writes (ideas → Obsidian)
 ├── prompts/
 │   └── classifier.md           # Classification prompt (the brain)
 ├── docs/
@@ -52,6 +61,9 @@ VALIS/
 │       │   └── SKILL.md        # Test the full pipeline
 │       └── tune-classifier/
 │           └── SKILL.md        # Improve classification prompt
+├── scripts/
+│   ├── sync-to-obsidian.sh         # Pulls ideas from GitHub → Obsidian vault
+│   └── com.valis.obsidian-sync.plist # launchd config (every 5 min)
 ├── .env.example
 ├── package.json
 ├── tsconfig.json
@@ -79,7 +91,9 @@ GROQ_API_KEY                # From console.groq.com
 GEMINI_API_KEY              # From aistudio.google.com
 NOTION_TOKEN                # From notion.so/my-integrations
 NOTION_ACTIONS_DB_ID        # Actions database ID
-NOTION_IDEAS_DB_ID          # Ideas database ID
+NOTION_IDEAS_DB_ID          # Ideas database ID (kept for update/search)
+GITHUB_TOKEN                # GitHub PAT with repo scope (for Obsidian sync)
+GITHUB_OBSIDIAN_REPO        # e.g. jmaulana0/valis-obsidian-sync
 ```
 
 ## Key Files
@@ -95,7 +109,7 @@ NOTION_IDEAS_DB_ID          # Ideas database ID
 
 - **Single function architecture.** Everything is one Vercel serverless function.
   Do not split into multiple endpoints unless there's a clear reason.
-- **Notion is the database.** No separate DB. All persistent state lives in Notion.
+- **Dual storage.** Actions live in Notion. Ideas live in Obsidian (synced via GitHub).
 - **Classification prompt is versioned.** Changes to the classifier prompt must be
   documented in `prompts/classifier.md` with a changelog entry.
 - **Errors reply to the user.** Every error path must send a Telegram message

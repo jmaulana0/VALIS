@@ -4,6 +4,7 @@ import { downloadVoiceFile, downloadFile, sendMessage } from '../lib/telegram';
 import { transcribe } from '../lib/transcribe';
 import { classify } from '../lib/classify';
 import { saveToNotion } from '../lib/notion';
+import { saveToObsidian } from '../lib/obsidian';
 import { uploadImageToNotion } from '../lib/upload';
 
 // Telegram update types
@@ -175,38 +176,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── Step 4: Save to Notion (with one retry) ────────────────────────────
-    const noteToSave = {
-      ...classified,
-      raw_transcript: transcript,
-      telegram_timestamp: new Date(message.date * 1000).toISOString(),
-      image_file_upload_id: notionFileUploadId,
-    };
+    // ── Step 4: Save (Actions → Notion, Ideas → Obsidian) ─────────────────
+    const isAction = classified.type === 'action';
+    const timestamp = new Date(message.date * 1000).toISOString();
 
-    let notionUrl: string;
-    try {
-      notionUrl = await saveToNotion(noteToSave);
-    } catch {
+    let savedUrl: string;
+
+    if (isAction) {
+      // Actions go to Notion
+      const noteToSave = {
+        ...classified,
+        raw_transcript: transcript,
+        telegram_timestamp: timestamp,
+        image_file_upload_id: notionFileUploadId,
+      };
+
       try {
-        notionUrl = await saveToNotion(noteToSave);
-      } catch (err) {
-        const notionErr = err instanceof Error ? err.message : String(err);
-        console.error('Notion save failed twice:', notionErr);
-        await sendMessage(
-          chatId,
-          `⚠️ Notion error: ${notionErr}\n\`\`\`\n${JSON.stringify(classified, null, 2)}\n\`\`\``
-        );
-        return res.status(200).json({ ok: true });
+        savedUrl = await saveToNotion(noteToSave);
+      } catch {
+        try {
+          savedUrl = await saveToNotion(noteToSave);
+        } catch (err) {
+          const notionErr = err instanceof Error ? err.message : String(err);
+          console.error('Notion save failed twice:', notionErr);
+          await sendMessage(
+            chatId,
+            `⚠️ Notion error: ${notionErr}\n\`\`\`\n${JSON.stringify(classified, null, 2)}\n\`\`\``
+          );
+          return res.status(200).json({ ok: true });
+        }
+      }
+    } else {
+      // Ideas go to Obsidian via GitHub
+      const noteForObsidian = {
+        ...classified,
+        raw_transcript: transcript,
+        telegram_timestamp: timestamp,
+      };
+
+      try {
+        savedUrl = await saveToObsidian(noteForObsidian);
+      } catch {
+        try {
+          savedUrl = await saveToObsidian(noteForObsidian);
+        } catch (err) {
+          const obsidianErr = err instanceof Error ? err.message : String(err);
+          console.error('Obsidian save failed twice:', obsidianErr);
+          await sendMessage(
+            chatId,
+            `⚠️ Obsidian sync error: ${obsidianErr}\n\`\`\`\n${JSON.stringify(classified, null, 2)}\n\`\`\``
+          );
+          return res.status(200).json({ ok: true });
+        }
       }
     }
 
     // ── Step 5: Reply with confirmation ────────────────────────────────────
-    const isAction = classified.type === 'action';
     const isUpdate = classified.intent === 'update';
     const emoji = isUpdate ? '📝' : (isAction ? '✅' : '💡');
     const label = isUpdate
-      ? (isAction ? 'Action updated' : 'Idea updated')
+      ? (isAction ? 'Action updated' : 'Idea saved')
       : (isAction ? 'Action saved' : 'Idea saved');
+    const destination = isAction ? 'Notion' : 'Obsidian';
 
     let reply = `${emoji} *${label}*\n*${classified.title}*\n`;
 
@@ -231,7 +262,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reply += '📎 Screenshot attached\n';
     }
 
-    reply += `\n[Open in Notion](${notionUrl})`;
+    reply += `\n→ ${destination}`;
+    if (isAction) {
+      reply += ` · [Open](${savedUrl})`;
+    }
 
     await sendMessage(chatId, reply, { parse_mode: 'Markdown' });
   } catch (err) {

@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Obsidian sync launchd agent — runs sync-to-obsidian.sh every 5 minutes.
+
+  To install:
+    1. Replace VALIS_DIR below with the absolute path to your VALIS clone
+    2. Copy to ~/Library/LaunchAgents/
+    3. Load it:  launchctl load ~/Library/LaunchAgents/com.valis.obsidian-sync.plist
+
+  launchd requires absolute paths — ~ and $HOME are not expanded.
+-->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -7,7 +17,8 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/zsh</string>
-        <string>/Users/james.maulana/Documents/GitHub/VALIS/scripts/sync-to-obsidian.sh</string>
+        <!-- Replace VALIS_DIR with the absolute path to your VALIS clone -->
+        <string>VALIS_DIR/scripts/sync-to-obsidian.sh</string>
     </array>
     <key>StartInterval</key>
     <integer>300</integer>

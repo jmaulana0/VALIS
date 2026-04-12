@@ -35,7 +35,7 @@ curl -s https://api.groq.com/openai/v1/audio/transcriptions \
 
 Expected: a clean transcript of the audio content.
 
-### 2. Classification (Gemini 3.1 Flash-Lite)
+### 2. Classification (Llama 3.3 70B via Groq)
 
 Test that transcript → structured JSON works:
 ```bash

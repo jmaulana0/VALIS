@@ -6,7 +6,7 @@
 
 1. Send a voice message to the Telegram bot
 2. Audio is transcribed (Groq Whisper)
-3. Transcript is classified as **Action** or **Idea** (Gemini 3.1 Flash-Lite)
+3. Transcript is classified as **Action** or **Idea** (Llama 3.3 70B via Groq)
 4. Entry is written to the correct Notion database
 5. Bot replies with confirmation
 
@@ -34,8 +34,7 @@ npm install
 | Service | Where | What you need |
 |---|---|---|
 | Telegram | [t.me/BotFather](https://t.me/BotFather) | Bot token |
-| Groq | [console.groq.com](https://console.groq.com) | API key |
-| Google AI Studio | [aistudio.google.com](https://aistudio.google.com) | API key (Gemini) |
+| Groq | [console.groq.com](https://console.groq.com) | API key (transcription + classification) |
 | Notion | [notion.so/my-integrations](https://www.notion.so/my-integrations) | Integration token + 2 database IDs |
 
 ### 3. Set environment variables
@@ -70,7 +69,7 @@ VALIS/
 ├── lib/
 │   ├── telegram.ts          # Telegram API helpers
 │   ├── transcribe.ts        # Groq Whisper transcription
-│   ├── classify.ts          # Gemini 3.1 Flash-Lite classification
+│   ├── classify.ts          # Llama 3.3 70B classification (via Groq)
 │   └── notion.ts            # Notion API writes
 ├── .env.example
 ├── package.json

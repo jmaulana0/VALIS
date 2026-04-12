@@ -3,9 +3,9 @@
 # Run via launchd every 5 minutes, or manually.
 #
 # Setup:
-#   1. Clone the repo:  git clone git@github.com:jmaulana0/valis-obsidian-sync.git ~/valis-obsidian-sync
-#   2. Make executable:  chmod +x ~/Documents/GitHub/VALIS/scripts/sync-to-obsidian.sh
-#   3. Install the launchd plist (see scripts/com.valis.obsidian-sync.plist)
+#   1. Clone the sync repo:  git clone git@github.com:<you>/valis-obsidian-sync.git ~/valis-obsidian-sync
+#   2. Make executable:  chmod +x scripts/sync-to-obsidian.sh
+#   3. Install the launchd agent:  ./scripts/install-sync.sh
 
 SYNC_REPO="$HOME/valis-obsidian-sync"
 VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"

@@ -53,5 +53,5 @@ Then re-set the webhook to the previous URL.
 | Bot doesn't reply | Webhook URL wrong | Re-run step 3 with correct URL |
 | "Unauthorized" in logs | Bad TELEGRAM_BOT_TOKEN | Check env vars in Vercel dashboard |
 | Transcription fails | Groq API key issue | Verify GROQ_API_KEY in Vercel env |
-| Classification fails | Gemini API key issue | Verify GEMINI_API_KEY in Vercel env |
+| Classification fails | Groq API key issue | Verify GROQ_API_KEY in Vercel env |
 | Notion write fails | Bad database ID or token | Check NOTION_TOKEN and DB IDs |

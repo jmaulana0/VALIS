@@ -8,7 +8,7 @@ For setup, see README.md. For full requirements, see PRD.md.
 **One function, zero infrastructure.**
 
 VALIS is a single Vercel serverless function that chains three API calls
-(Groq → Gemini → Notion). There is no database, no queue, no background worker,
+(Groq Whisper → Groq Llama → Notion). There is no database, no queue, no background worker,
 no cron job. Notion is both the UI and the database.
 
 This is intentional. The goal is an MVP that can be built in a day and costs
@@ -19,7 +19,7 @@ $0/month. Every component that isn't strictly necessary was removed.
 │  Telegram    │     │  Vercel              │     │  APIs             │
 │              │     │  api/webhook.ts      │     │                   │
 │  .ogg audio  │────▶│                      │────▶│  Groq Whisper     │
-│              │     │  1 function          │     │  Gemini Flash-Lite│
+│              │     │  1 function          │     │  Groq Llama 3.3   │
 │              │◀────│  3 API calls         │     │  Notion           │
 │  reply       │     │  ~8s total           │     │                   │
 └─────────────┘     └──────────────────────┘     └───────────────────┘
@@ -43,13 +43,13 @@ $0/month. Every component that isn't strictly necessary was removed.
 - Same `whisper-large-v3-turbo` model as OpenAI, same accuracy
 - MacWhisper is desktop-only, can't be called from a serverless function
 
-### Gemini 3.1 Flash-Lite (not GPT-4o-mini, not Llama)
+### Groq Llama 3.3 70B (not Gemini, not GPT-4o-mini)
 
-- **Free tier** on Google AI Studio
-- Purpose-built for "high-volume agentic tasks, classification, data processing"
-- Supports structured JSON output natively
-- Cheapest paid option if free tier is exceeded ($0.25/1M input tokens)
-- Sufficient quality for binary classification + title generation + tagging
+- **Same provider as transcription** — one API key for the whole pipeline
+- **Free tier** (30 RPM) is sufficient for personal use
+- Fast inference on Groq's LPU hardware (~1-2s per classification)
+- Supports JSON mode via `response_format: { type: "json_object" }`
+- High quality for binary classification + title generation + tagging
 
 ### Notion (not Obsidian, not a custom DB)
 
@@ -106,8 +106,8 @@ The prompt will need to evolve as usage patterns emerge. Versioning it in
   again, tell the user. Don't build a dead letter queue for an MVP.
 - **No analytics dashboard.** Check Vercel logs for errors. Check Notion
   for volume. That's enough for one user.
-- **No multi-model fallback.** If Gemini is down, the user gets an error.
-  Building fallback to GPT-4o-mini adds complexity for a rare edge case.
+- **No multi-model fallback.** If Groq is down, the user gets an error.
+  Building fallback to another provider adds complexity for a rare edge case.
 
 ## Latency Budget
 
@@ -117,7 +117,7 @@ Step                          Expected    Timeout
 Telegram → Vercel webhook     ~200ms      —
 Download .ogg from Telegram   ~500ms      5s
 Groq Whisper transcription    ~2-6s       30s
-Gemini classification         ~1-2s       15s
+Groq Llama classification     ~1-2s       15s
 Notion API write              ~500ms      10s
 Telegram reply                ~200ms      5s
 ───────────────────────────   ────────

@@ -14,8 +14,8 @@ Core loop: **speak → transcribe → classify → enrich → route**
 ## Architecture
 
 ```
-Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Gemini 3.1 Flash-Lite  →  Actions: Notion API
-(capture)        (webhook handler)     (transcribe)     (classify + enrich)        Ideas:  GitHub → Obsidian
+Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Groq Llama 3.3 70B  →  Actions: Notion API
+(capture)        (webhook handler)     (transcribe)     (classify + enrich)     Ideas:  GitHub → Obsidian
 ```
 
 Single serverless function at `api/webhook.ts` handles the entire pipeline.
@@ -32,7 +32,7 @@ files land in `00 - Inbox/` of the iCloud Obsidian vault → existing
 | Capture | Telegram Bot API (voice messages) |
 | API | Vercel Serverless Function (TypeScript) |
 | Transcription | Groq Whisper `large-v3-turbo` |
-| Classification | Gemini 3.1 Flash-Lite |
+| Classification | Groq Llama 3.3 70B (`llama-3.3-70b-versatile`) |
 | Action Storage | Notion API (Actions database) |
 | Idea Storage | GitHub API → Obsidian (iCloud vault via sync script) |
 
@@ -45,7 +45,7 @@ VALIS/
 ├── lib/
 │   ├── telegram.ts             # Telegram Bot API helpers
 │   ├── transcribe.ts           # Groq Whisper transcription
-│   ├── classify.ts             # Gemini classification + enrichment
+│   ├── classify.ts             # Llama 3.3 70B classification + enrichment (via Groq)
 │   ├── notion.ts               # Notion API writes (actions)
 │   └── obsidian.ts             # GitHub API writes (ideas → Obsidian)
 ├── prompts/
@@ -87,8 +87,7 @@ npm test                 # Run tests
 ```
 TELEGRAM_BOT_TOKEN          # From @BotFather
 TELEGRAM_WEBHOOK_SECRET     # Self-generated, for webhook verification
-GROQ_API_KEY                # From console.groq.com
-GEMINI_API_KEY              # From aistudio.google.com
+GROQ_API_KEY                # From console.groq.com (transcription + classification)
 NOTION_TOKEN                # From notion.so/my-integrations
 NOTION_ACTIONS_DB_ID        # Actions database ID
 NOTION_IDEAS_DB_ID          # Ideas database ID (kept for update/search)
@@ -99,11 +98,11 @@ GITHUB_OBSIDIAN_REPO        # e.g. jmaulana0/valis-obsidian-sync
 ## Key Files
 
 - `api/webhook.ts` — The entire pipeline in one function. All logic flows through here.
-- `lib/classify.ts` — Contains the Gemini prompt. This is the "brain" of the system.
-  **When classification is wrong, this is what needs to change.**
+- `lib/classify.ts` — Contains the classification prompt (runs on Llama 3.3 70B via Groq).
+  This is the "brain" of the system. **When classification is wrong, this is what needs to change.**
 - `prompts/classifier.md` — Source of truth for the classification prompt.
   The prompt in `lib/classify.ts` should match this file.
-- `docs/decisions/` — ADRs for why we chose Telegram, Groq, Gemini, Notion.
+- `docs/decisions/` — ADRs for why we chose Telegram, Groq, Notion.
 
 ## Conventions
 

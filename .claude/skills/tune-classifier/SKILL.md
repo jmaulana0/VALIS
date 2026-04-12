@@ -15,7 +15,7 @@ description: |
   CAPTURE          CLASSIFY         STORE            CORRECT           LEARN
   ───────          ────────         ─────            ───────           ─────
 
-  Voice note  ──▶  Gemini    ──▶   Notion DB   ──▶  User moves    ──▶  Update
+  Voice note  ──▶  Llama/Groq ──▶  Notion DB   ──▶  User moves    ──▶  Update
   via Telegram     classifies       (Actions or      entry to           prompt
                    + enriches       Ideas)           other DB           and test
                                                      (= correction)

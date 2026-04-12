@@ -65,8 +65,8 @@ The entire interaction happens inside a Telegram chat. No app to install. No scr
 │  from user   │     │  1. Receive webhook   │     │     large-v3-turbo│
 │              │     │  2. Download audio    │     │     (transcribe)  │
 │              │◀────│  3. Transcribe (Groq) │     │                   │
-│  Bot reply   │     │  4. Classify+enrich   │────▶│  2. Gemini 3.1    │
-│  with result │     │     (Gemini)          │     │     Flash-Lite    │
+│  Bot reply   │     │  4. Classify+enrich   │────▶│  2. Groq Llama    │
+│  with result │     │     (Groq Llama)      │     │     3.3 70B       │
 │              │     │  5. Write to Notion   │     │     (classify +   │
 └─────────────┘     │  6. Reply to user     │     │      enrich)      │
                     └──────────────────────┘     │                   │
@@ -81,7 +81,7 @@ The entire interaction happens inside a Telegram chat. No app to install. No scr
 STEP 1: RECEIVE          STEP 2: TRANSCRIBE       STEP 3: CLASSIFY+ENRICH     STEP 4: ROUTE
 ──────────────           ──────────────────       ───────────────────────     ─────────────
 
-Telegram webhook  ──▶    Groq Whisper API   ──▶   Gemini 3.1 Flash-Lite ──▶  Notion API
+Telegram webhook  ──▶    Groq Whisper API   ──▶   Groq Llama 3.3 70B    ──▶  Notion API
                          large-v3-turbo                                       
 receives voice           transcribes .ogg          Input: transcript          If type=action:
 message + chat ID        audio to text             Output: JSON               → write to Actions DB
@@ -128,16 +128,16 @@ Telegram File API                                   body: string
 - **Latency:** ~10x realtime (a 60s clip transcribes in ~6s)
 - **Why Groq:** Fastest Whisper API available, essentially free for personal use, excellent accuracy
 
-### 5.4 Classification & Enrichment — Gemini 3.1 Flash-Lite
+### 5.4 Classification & Enrichment — Llama 3.3 70B via Groq
 
-- **Model:** `gemini-3.1-flash-lite` (Preview)
-- **Cost:** Free tier available. Paid: $0.25/1M input tokens, $1.50/1M output tokens
-- **Why Gemini 3.1 Flash-Lite:**
-  - Newest generation model (3.1), purpose-built for high-volume simple tasks
-  - Optimized for classification, data processing, structured output
-  - Free tier is generous for personal use
-  - Supports structured JSON output natively
-  - Cheapest option if usage ever exceeds free tier
+- **Model:** `llama-3.3-70b-versatile` (hosted on Groq)
+- **Cost:** Free tier (30 RPM). Same Groq API key as transcription.
+- **Why Llama 3.3 70B on Groq:**
+  - Free tier is sufficient for personal use
+  - Single API provider for both transcription and classification (one key)
+  - Fast inference on Groq's LPU hardware
+  - Strong JSON output via prompting + `response_format: json_object`
+  - High quality for classification + title generation + tagging
 
 **Classification prompt (system):**
 
@@ -220,7 +220,7 @@ Two databases in a dedicated personal Notion workspace (free plan).
 | Capture | Telegram Bot API | Free |
 | API / Hosting | Vercel Serverless (Hobby) | Free |
 | Transcription | Groq Whisper `large-v3-turbo` | Free tier / ~$0.04/hr |
-| Classification | Gemini 3.1 Flash-Lite | Free tier / ~$0.25/1M input tokens |
+| Classification | Groq Llama 3.3 70B (`llama-3.3-70b-versatile`) | Free tier (30 RPM) |
 | Storage | Notion API (personal workspace) | Free |
 | **Total** | | **$0/month** |
 
@@ -231,8 +231,7 @@ Two databases in a dedicated personal Notion workspace (free plan).
 | Service | What to create | Where |
 |---|---|---|
 | Telegram | Bot token via @BotFather | [t.me/BotFather](https://t.me/BotFather) |
-| Groq | API key | [console.groq.com](https://console.groq.com) |
-| Google AI Studio | API key for Gemini | [aistudio.google.com](https://aistudio.google.com) |
+| Groq | API key (transcription + classification) | [console.groq.com](https://console.groq.com) |
 | Notion | Internal integration + database IDs | [notion.so/my-integrations](https://www.notion.so/my-integrations) |
 
 All keys stored as Vercel environment variables. Never committed to code.
@@ -244,7 +243,7 @@ All keys stored as Vercel environment variables. Never committed to code.
 | Failure | What happens | User sees |
 |---|---|---|
 | Groq transcription fails | Retry once, then reply with error | "⚠️ Couldn't transcribe. Try again?" |
-| Gemini classification fails | Retry once, then save raw transcript to Ideas DB as unclassified | "⚠️ Saved but couldn't classify. Check your Ideas board." |
+| Classification fails | Retry once, then save raw transcript to Ideas DB as unclassified | "⚠️ Saved but couldn't classify. Check your Ideas board." |
 | Notion write fails | Retry once, then reply with the classified JSON so user can manually save | "⚠️ Couldn't save to Notion. Here's what I got: [JSON]" |
 | Audio too short (<1s) | Skip processing | "⚠️ Voice note too short. Try again?" |
 | Audio too long (>5min) | Process anyway (Whisper handles long audio) | Normal response |
@@ -262,7 +261,7 @@ VALIS/
 ├── lib/
 │   ├── telegram.ts          # Telegram Bot API helpers (download audio, send reply)
 │   ├── transcribe.ts        # Groq Whisper API call
-│   ├── classify.ts          # Gemini 3.1 Flash-Lite classification + enrichment
+│   ├── classify.ts          # Llama 3.3 70B classification + enrichment (via Groq)
 │   └── notion.ts            # Notion API writes (actions DB + ideas DB)
 ├── .env.example             # Template for required env vars
 ├── .gitignore
@@ -280,8 +279,7 @@ VALIS/
 ```
 TELEGRAM_BOT_TOKEN=          # From @BotFather
 TELEGRAM_WEBHOOK_SECRET=     # Self-generated, for webhook verification
-GROQ_API_KEY=                # From console.groq.com
-GEMINI_API_KEY=              # From aistudio.google.com
+GROQ_API_KEY=                # From console.groq.com (transcription + classification)
 NOTION_TOKEN=                # From notion.so/my-integrations
 NOTION_ACTIONS_DB_ID=        # Actions database ID
 NOTION_IDEAS_DB_ID=          # Ideas database ID
@@ -295,7 +293,7 @@ NOTION_IDEAS_DB_ID=          # Ideas database ID
 
 - Telegram bot receives voice messages
 - Transcription via Groq Whisper
-- Binary classification (action vs. idea) via Gemini 3.1 Flash-Lite
+- Binary classification (action vs. idea) via Llama 3.3 70B on Groq
 - Enrichment: auto-generated title, cleaned body, tags, priority (actions), theme (ideas)
 - Write to correct Notion DB
 - Reply to user with confirmation
@@ -332,10 +330,10 @@ The MVP is successful if:
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Gemini 3.1 Flash-Lite preview breaks/changes | Medium | High | Pin model version; fallback to Gemini 2.5 Flash (stable) |
+| Groq deprecates Llama 3.3 70B | Low | Medium | Swap model ID in `lib/classify.ts`; any OpenAI-compatible chat model works |
 | Groq free tier rate-limited | Low | Medium | 7,200 req/day is massive headroom; fallback to OpenAI Whisper |
 | Transcription errors mess up classification | Medium | Medium | Keep raw transcript in Notion for manual correction |
-| Telegram bot latency feels slow | Low | Medium | Groq Whisper is ~6s, Gemini is ~1s, Notion is ~1s. Total ~8s is acceptable |
+| Telegram bot latency feels slow | Low | Medium | Groq Whisper is ~6s, Llama classification is ~1s, Notion is ~1s. Total ~8s is acceptable |
 | Ambiguous notes get misclassified | Medium | Low | Default to idea (cheaper to ignore); user can manually move in Notion |
 | Vercel cold starts add latency | Low | Low | First request after idle may take 2-3s extra; acceptable for async capture |
 
@@ -349,8 +347,8 @@ Phase 1: Foundation                    Phase 2: Integration               Phase 
 
 1. Create Telegram bot                 4. Wire up Groq Whisper            7. Error handling + retries
    (@BotFather)                           transcription                   8. Telegram reply formatting
-2. Set up Vercel project               5. Wire up Gemini 3.1              9. Test with 20 real voice notes
-   with webhook endpoint                  Flash-Lite classification       10. Adjust classification prompt
+2. Set up Vercel project               5. Wire up Llama 3.3 70B           9. Test with 20 real voice notes
+   with webhook endpoint                  classification (via Groq)       10. Adjust classification prompt
 3. Set up Notion workspace             6. Wire up Notion API writes           based on results
    with two databases                     to both databases
 ```

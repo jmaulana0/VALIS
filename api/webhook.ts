@@ -157,33 +157,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         const classErr = err instanceof Error ? err.message : String(err);
         console.error('Classification failed twice:', classErr);
-        // Fallback: save raw transcript as an unclassified idea
+        // Fallback: save raw transcript as an unclassified idea.
+        // Photos still need Notion (image upload is Notion-specific); otherwise Obsidian.
+        const fallbackNote = {
+          intent: 'create' as const,
+          type: 'idea' as const,
+          title: hasPhoto ? 'Unclassified screenshot' : 'Unclassified voice note',
+          body: transcript,
+          tags: ['unclassified'],
+          theme: 'Personal',
+          raw_transcript: transcript,
+          telegram_timestamp: new Date(message.date * 1000).toISOString(),
+        };
         try {
-          await saveToNotion({
-            intent: 'create',
-            type: 'idea',
-            title: hasPhoto ? 'Unclassified screenshot' : 'Unclassified voice note',
-            body: transcript,
-            tags: ['unclassified'],
-            theme: 'Personal',
-            raw_transcript: transcript,
-            telegram_timestamp: new Date(message.date * 1000).toISOString(),
-            image_file_upload_id: notionFileUploadId,
-          });
+          if (notionFileUploadId) {
+            await saveToNotion({ ...fallbackNote, image_file_upload_id: notionFileUploadId });
+          } else {
+            await saveToObsidian(fallbackNote);
+          }
         } catch { /* best-effort */ }
-        await sendMessage(chatId, `⚠️ Saved but couldn't classify: ${classErr}\nCheck your Ideas board.`);
+        await sendMessage(chatId, `⚠️ Saved but couldn't classify: ${classErr}\nCheck your Obsidian inbox.`);
         return res.status(200).json({ ok: true });
       }
     }
 
-    // ── Step 4: Save (Actions → Notion, Ideas → Obsidian) ─────────────────
+    // ── Step 4: Save ──────────────────────────────────────────────────────
+    // Default destination: Obsidian (for both actions and ideas).
+    // Exception: if a screenshot was attached, stay on the Notion path so the
+    // image upload stays linked to the note (Obsidian image sync is TBD).
     const isAction = classified.type === 'action';
     const timestamp = new Date(message.date * 1000).toISOString();
+    const useNotion = !!notionFileUploadId;
 
-    let savedUrl: string;
+    let primaryUrl: string;
+    let secondaryUrl: string | undefined;
+    let destination: 'Notion' | 'Obsidian';
 
-    if (isAction) {
-      // Actions go to Notion
+    if (useNotion) {
+      destination = 'Notion';
       const noteToSave = {
         ...classified,
         raw_transcript: transcript,
@@ -192,10 +203,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       };
 
       try {
-        savedUrl = await saveToNotion(noteToSave);
+        primaryUrl = await saveToNotion(noteToSave);
       } catch {
         try {
-          savedUrl = await saveToNotion(noteToSave);
+          primaryUrl = await saveToNotion(noteToSave);
         } catch (err) {
           const notionErr = err instanceof Error ? err.message : String(err);
           console.error('Notion save failed twice:', notionErr);
@@ -207,18 +218,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }
     } else {
-      // Ideas go to Obsidian via GitHub
+      destination = 'Obsidian';
       const noteForObsidian = {
         ...classified,
         raw_transcript: transcript,
         telegram_timestamp: timestamp,
       };
 
+      let result;
       try {
-        savedUrl = await saveToObsidian(noteForObsidian);
+        result = await saveToObsidian(noteForObsidian);
       } catch {
         try {
-          savedUrl = await saveToObsidian(noteForObsidian);
+          result = await saveToObsidian(noteForObsidian);
         } catch (err) {
           const obsidianErr = err instanceof Error ? err.message : String(err);
           console.error('Obsidian save failed twice:', obsidianErr);
@@ -229,15 +241,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({ ok: true });
         }
       }
+      primaryUrl = result.obsidianUri;
+      secondaryUrl = result.githubUrl;
     }
 
     // ── Step 5: Reply with confirmation ────────────────────────────────────
     const isUpdate = classified.intent === 'update';
     const emoji = isUpdate ? '📝' : (isAction ? '✅' : '💡');
     const label = isUpdate
-      ? (isAction ? 'Action updated' : 'Idea saved')
+      ? (isAction ? 'Action updated' : 'Idea updated')
       : (isAction ? 'Action saved' : 'Idea saved');
-    const destination = isAction ? 'Notion' : 'Obsidian';
 
     let reply = `${emoji} *${label}*\n*${classified.title}*\n`;
 
@@ -262,9 +275,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reply += '📎 Screenshot attached\n';
     }
 
-    reply += `\n→ ${destination}`;
-    if (isAction) {
-      reply += ` · [Open](${savedUrl})`;
+    reply += `\n→ ${destination} · [Open](${primaryUrl})`;
+    if (secondaryUrl) {
+      reply += ` · [GitHub](${secondaryUrl})`;
     }
 
     await sendMessage(chatId, reply, { parse_mode: 'Markdown' });

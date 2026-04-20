@@ -241,7 +241,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(200).json({ ok: true });
         }
       }
-      primaryUrl = result.obsidianUri;
+      // Telegram's Markdown parser strips custom schemes like `obsidian://`,
+      // so route the Open link through an HTTPS bridge that 302s into the app.
+      const host = req.headers.host;
+      primaryUrl = host
+        ? `https://${host}/api/open?to=${encodeURIComponent(result.obsidianUri)}`
+        : result.obsidianUri;
       secondaryUrl = result.githubUrl;
     }
 

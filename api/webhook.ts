@@ -156,7 +156,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.error('Classification failed twice:', classErr);
         // Fallback: save raw transcript as an unclassified idea to Obsidian.
         const fallbackNote = {
-          intent: 'create' as const,
           type: 'idea' as const,
           title: hasPhoto ? 'Unclassified screenshot' : 'Unclassified voice note',
           body: transcript,
@@ -211,11 +210,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const secondaryUrl = result.githubUrl;
 
     // ── Step 5: Reply with confirmation ────────────────────────────────────
-    const isUpdate = classified.intent === 'update';
-    const emoji = isUpdate ? '📝' : (isAction ? '✅' : '💡');
-    const label = isUpdate
-      ? (isAction ? 'Action updated' : 'Idea updated')
-      : (isAction ? 'Action saved' : 'Idea saved');
+    const emoji = isAction ? '✅' : '💡';
+    const label = isAction ? 'Action saved' : 'Idea saved';
 
     let reply = `${emoji} *${label}*\n*${classified.title}*\n`;
 

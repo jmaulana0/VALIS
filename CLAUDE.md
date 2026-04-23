@@ -4,18 +4,19 @@
 
 VALIS (Voice-Activated Logging & Intelligent Sorting) is a Telegram bot that
 captures voice notes, transcribes them, classifies them as **actions** or
-**ideas**, and routes them to the correct destination. Zero manual sorting.
+**ideas**, and saves them to Obsidian. Zero manual sorting.
 
-- **Actions** → Notion (task tracking database)
-- **Ideas** → Obsidian (via GitHub sync → iCloud vault)
+- **Actions** and **Ideas** → Obsidian (via GitHub sync → iCloud vault)
+  The classifier still distinguishes actions vs ideas so the frontmatter and
+  inbox organisation can differ, but both land in the same vault.
 
-Core loop: **speak → transcribe → classify → enrich → route**
+Core loop: **speak → transcribe → classify → enrich → write**
 
 ## Architecture
 
 ```
-Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Groq Llama 3.3 70B  →  Actions: Notion API
-(capture)        (webhook handler)     (transcribe)     (classify + enrich)     Ideas:  GitHub → Obsidian
+Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Groq Llama 3.3 70B  →  GitHub → Obsidian
+(capture)        (webhook handler)     (transcribe)     (classify + enrich)     (all notes)
 ```
 
 Single serverless function at `api/webhook.ts` handles the entire pipeline.
@@ -33,8 +34,7 @@ files land in `00 - Inbox/` of the iCloud Obsidian vault → existing
 | API | Vercel Serverless Function (TypeScript) |
 | Transcription | Groq Whisper `large-v3-turbo` |
 | Classification | Groq Llama 3.3 70B (`llama-3.3-70b-versatile`) |
-| Action Storage | Notion API (Actions database) |
-| Idea Storage | GitHub API → Obsidian (iCloud vault via sync script) |
+| Storage | GitHub API → Obsidian (iCloud vault via sync script) |
 
 ## Project Structure
 
@@ -46,8 +46,9 @@ VALIS/
 │   ├── telegram.ts             # Telegram Bot API helpers
 │   ├── transcribe.ts           # Groq Whisper transcription
 │   ├── classify.ts             # Llama 3.3 70B classification + enrichment (via Groq)
-│   ├── notion.ts               # Notion API writes (actions)
-│   └── obsidian.ts             # GitHub API writes (ideas → Obsidian)
+│   └── obsidian.ts             # GitHub API writes → Obsidian
+├── archive/
+│   └── notion/                 # Archived Notion integration (restore docs inside)
 ├── prompts/
 │   └── classifier.md           # Classification prompt (the brain)
 ├── docs/
@@ -88,9 +89,6 @@ npm test                 # Run tests
 TELEGRAM_BOT_TOKEN          # From @BotFather
 TELEGRAM_WEBHOOK_SECRET     # Self-generated, for webhook verification
 GROQ_API_KEY                # From console.groq.com (transcription + classification)
-NOTION_TOKEN                # From notion.so/my-integrations
-NOTION_ACTIONS_DB_ID        # Actions database ID
-NOTION_IDEAS_DB_ID          # Ideas database ID (kept for update/search)
 GITHUB_TOKEN                # GitHub PAT with repo scope (for Obsidian sync)
 GITHUB_OBSIDIAN_REPO        # e.g. jmaulana0/valis-obsidian-sync
 ```
@@ -108,7 +106,7 @@ GITHUB_OBSIDIAN_REPO        # e.g. jmaulana0/valis-obsidian-sync
 
 - **Single function architecture.** Everything is one Vercel serverless function.
   Do not split into multiple endpoints unless there's a clear reason.
-- **Dual storage.** Actions live in Notion. Ideas live in Obsidian (synced via GitHub).
+- **Single storage.** All notes (actions and ideas) live in Obsidian, synced via GitHub.
 - **Classification prompt is versioned.** Changes to the classifier prompt must be
   documented in `prompts/classifier.md` with a changelog entry.
 - **Errors reply to the user.** Every error path must send a Telegram message
@@ -125,7 +123,7 @@ VALIS uses `.claude/skills/` for repeatable AI agent workflows:
 | Skill | Purpose |
 |---|---|
 | `/deploy` | Deploy to Vercel, set webhook, verify health |
-| `/test-pipeline` | End-to-end test: send audio → check Notion entry |
+| `/test-pipeline` | End-to-end test: send audio → check Obsidian note |
 | `/tune-classifier` | Review misclassifications and improve the prompt |
 
 ## Self-Improving Classification
@@ -136,7 +134,7 @@ in this repo. It determines whether voice notes get routed correctly.
 The improvement loop:
 1. User captures voice notes via Telegram bot
 2. Some get misclassified (action tagged as idea, or vice versa)
-3. User manually re-categorizes in Notion (moves between databases)
+3. User manually re-categorizes in Obsidian (edits the `type` frontmatter)
 4. `/tune-classifier` skill reviews corrections and suggests prompt improvements
 5. Updated prompt is tested against past transcripts
 6. If accuracy improves, prompt is committed

@@ -3,6 +3,8 @@ import type { ClassifiedNote } from './classify';
 interface NoteForObsidian extends ClassifiedNote {
   raw_transcript: string;
   telegram_timestamp: string;
+  /** Optional image attachment. Extension should include the leading dot, e.g. ".jpg". */
+  image?: { buffer: Buffer; extension: string };
 }
 
 export interface ObsidianSaveResult {
@@ -35,42 +37,35 @@ export async function saveToObsidian(note: NoteForObsidian): Promise<ObsidianSav
     .replace(/^-|-$/g, '');
   const filename = `${date}-${slug}.md`;
 
-  const frontmatter = buildFrontmatter(note, date);
-
-  const body = [
-    `# ${note.title}`,
-    '',
-    note.body,
-    '',
-    '---',
-    '',
-    '## Raw Transcript',
-    '',
-    note.raw_transcript,
-  ].join('\n');
-
-  const content = `${frontmatter}\n\n${body}\n`;
-  const encoded = Buffer.from(content).toString('base64');
-
-  const res = await fetch(`https://api.github.com/repos/${repo}/contents/inbox/${filename}`, {
-    method: 'PUT',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/vnd.github.v3+json',
-    },
-    body: JSON.stringify({
-      message: `Add ${note.type}: ${note.title}`,
-      content: encoded,
-    }),
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`GitHub API ${res.status}: ${errBody}`);
+  let imageFilename: string | undefined;
+  if (note.image) {
+    imageFilename = `${date}-${slug}${note.image.extension}`;
+    await commitFileToGitHub({
+      repo,
+      token,
+      path: `inbox/${imageFilename}`,
+      content: note.image.buffer.toString('base64'),
+      message: `Add ${note.type} image: ${note.title}`,
+    });
   }
 
-  const data = await res.json() as { content: { html_url: string } };
+  const frontmatter = buildFrontmatter(note, date);
+
+  const bodyParts: string[] = [`# ${note.title}`, '', note.body];
+  if (imageFilename) {
+    bodyParts.push('', `![[${imageFilename}]]`);
+  }
+  bodyParts.push('', '---', '', '## Raw Transcript', '', note.raw_transcript);
+
+  const content = `${frontmatter}\n\n${bodyParts.join('\n')}\n`;
+
+  const data = await commitFileToGitHub({
+    repo,
+    token,
+    path: `inbox/${filename}`,
+    content: Buffer.from(content).toString('base64'),
+    message: `Add ${note.type}: ${note.title}`,
+  });
   const githubUrl = data.content.html_url;
 
   // Path inside the vault, after sync-to-obsidian.sh moves the file from the
@@ -106,4 +101,31 @@ function buildFrontmatter(note: NoteForObsidian, date: string): string {
 
 function escapeYaml(s: string): string {
   return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+interface CommitOpts {
+  repo: string;
+  token: string;
+  path: string;
+  content: string; // base64
+  message: string;
+}
+
+async function commitFileToGitHub(opts: CommitOpts): Promise<{ content: { html_url: string } }> {
+  const res = await fetch(`https://api.github.com/repos/${opts.repo}/contents/${opts.path}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${opts.token}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/vnd.github.v3+json',
+    },
+    body: JSON.stringify({ message: opts.message, content: opts.content }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`GitHub API ${res.status}: ${errBody}`);
+  }
+
+  return res.json() as Promise<{ content: { html_url: string } }>;
 }

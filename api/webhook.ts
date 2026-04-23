@@ -108,18 +108,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let transcript: string;
-    let notionFileUploadId: string | undefined;
+    let imageBuffer: Buffer | undefined;
 
-    // ── Upload photo to Notion if present ──────────────────────────────────
+    // ── Download photo bytes if present ────────────────────────────────────
+    // We defer the destination-specific upload (Notion vs GitHub) until after
+    // classification so ideas-with-photos can be committed to Obsidian.
     if (hasPhoto) {
       const largestPhoto = message.photo![message.photo!.length - 1];
       try {
-        const imageBuffer = await downloadFile(largestPhoto.file_id);
-        notionFileUploadId = await uploadImageToNotion(imageBuffer, 'screenshot.jpg');
+        imageBuffer = await downloadFile(largestPhoto.file_id);
       } catch (err) {
-        const uploadErr = err instanceof Error ? err.message : String(err);
-        console.error('Image upload failed:', uploadErr);
-        await sendMessage(chatId, `⚠️ Image upload issue: ${uploadErr}\nContinuing without screenshot...`);
+        const dlErr = err instanceof Error ? err.message : String(err);
+        console.error('Image download failed:', dlErr);
+        await sendMessage(chatId, `⚠️ Image download issue: ${dlErr}\nContinuing without screenshot...`);
       }
     }
 
@@ -157,8 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (err) {
         const classErr = err instanceof Error ? err.message : String(err);
         console.error('Classification failed twice:', classErr);
-        // Fallback: save raw transcript as an unclassified idea.
-        // Photos still need Notion (image upload is Notion-specific); otherwise Obsidian.
+        // Fallback: save raw transcript as an unclassified idea to Obsidian.
         const fallbackNote = {
           intent: 'create' as const,
           type: 'idea' as const,
@@ -168,13 +168,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           theme: 'Personal',
           raw_transcript: transcript,
           telegram_timestamp: new Date(message.date * 1000).toISOString(),
+          image: imageBuffer ? { buffer: imageBuffer, extension: '.jpg' } : undefined,
         };
         try {
-          if (notionFileUploadId) {
-            await saveToNotion({ ...fallbackNote, image_file_upload_id: notionFileUploadId });
-          } else {
-            await saveToObsidian(fallbackNote);
-          }
+          await saveToObsidian(fallbackNote);
         } catch { /* best-effort */ }
         await sendMessage(chatId, `⚠️ Saved but couldn't classify: ${classErr}\nCheck your Obsidian inbox.`);
         return res.status(200).json({ ok: true });
@@ -182,12 +179,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ── Step 4: Save ──────────────────────────────────────────────────────
-    // Default destination: Obsidian (for both actions and ideas).
-    // Exception: if a screenshot was attached, stay on the Notion path so the
-    // image upload stays linked to the note (Obsidian image sync is TBD).
+    // Ideas always go to Obsidian (now with image support via wiki-link).
+    // Actions with a photo go to Notion so the task stays in task tracking.
+    // Actions without a photo go to Obsidian (markdown is enough).
     const isAction = classified.type === 'action';
     const timestamp = new Date(message.date * 1000).toISOString();
-    const useNotion = !!notionFileUploadId;
+    const useNotion = isAction && !!imageBuffer;
 
     let primaryUrl: string;
     let secondaryUrl: string | undefined;
@@ -195,6 +192,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (useNotion) {
       destination = 'Notion';
+      let notionFileUploadId: string | undefined;
+      try {
+        notionFileUploadId = await uploadImageToNotion(imageBuffer!, 'screenshot.jpg');
+      } catch (err) {
+        const uploadErr = err instanceof Error ? err.message : String(err);
+        console.error('Notion image upload failed:', uploadErr);
+        await sendMessage(chatId, `⚠️ Image upload issue: ${uploadErr}\nContinuing without screenshot...`);
+      }
+
       const noteToSave = {
         ...classified,
         raw_transcript: transcript,
@@ -223,6 +229,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...classified,
         raw_transcript: transcript,
         telegram_timestamp: timestamp,
+        image: imageBuffer ? { buffer: imageBuffer, extension: '.jpg' } : undefined,
       };
 
       let result;
@@ -276,7 +283,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reply += classified.tags.map((t) => `#${t}`).join(' ') + '\n';
     }
 
-    if (notionFileUploadId) {
+    if (imageBuffer) {
       reply += '📎 Screenshot attached\n';
     }
 

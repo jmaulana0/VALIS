@@ -3,9 +3,7 @@ import { downloadVoiceFile, downloadFile, sendMessage } from '../lib/telegram';
 
 import { transcribe } from '../lib/transcribe';
 import { classify } from '../lib/classify';
-import { saveToNotion } from '../lib/notion';
 import { saveToObsidian } from '../lib/obsidian';
-import { uploadImageToNotion } from '../lib/upload';
 
 // Telegram update types
 interface TelegramVoice {
@@ -111,8 +109,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let imageBuffer: Buffer | undefined;
 
     // ── Download photo bytes if present ────────────────────────────────────
-    // We defer the destination-specific upload (Notion vs GitHub) until after
-    // classification so ideas-with-photos can be committed to Obsidian.
     if (hasPhoto) {
       const largestPhoto = message.photo![message.photo!.length - 1];
       try {
@@ -178,84 +174,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // ── Step 4: Save ──────────────────────────────────────────────────────
-    // Ideas always go to Obsidian (now with image support via wiki-link).
-    // Actions with a photo go to Notion so the task stays in task tracking.
-    // Actions without a photo go to Obsidian (markdown is enough).
+    // ── Step 4: Save to Obsidian ─────────────────────────────────────────
     const isAction = classified.type === 'action';
     const timestamp = new Date(message.date * 1000).toISOString();
-    const useNotion = isAction && !!imageBuffer;
 
-    let primaryUrl: string;
-    let secondaryUrl: string | undefined;
-    let destination: 'Notion' | 'Obsidian';
+    const noteForObsidian = {
+      ...classified,
+      raw_transcript: transcript,
+      telegram_timestamp: timestamp,
+      image: imageBuffer ? { buffer: imageBuffer, extension: '.jpg' } : undefined,
+    };
 
-    if (useNotion) {
-      destination = 'Notion';
-      let notionFileUploadId: string | undefined;
-      try {
-        notionFileUploadId = await uploadImageToNotion(imageBuffer!, 'screenshot.jpg');
-      } catch (err) {
-        const uploadErr = err instanceof Error ? err.message : String(err);
-        console.error('Notion image upload failed:', uploadErr);
-        await sendMessage(chatId, `⚠️ Image upload issue: ${uploadErr}\nContinuing without screenshot...`);
-      }
-
-      const noteToSave = {
-        ...classified,
-        raw_transcript: transcript,
-        telegram_timestamp: timestamp,
-        image_file_upload_id: notionFileUploadId,
-      };
-
-      try {
-        primaryUrl = await saveToNotion(noteToSave);
-      } catch {
-        try {
-          primaryUrl = await saveToNotion(noteToSave);
-        } catch (err) {
-          const notionErr = err instanceof Error ? err.message : String(err);
-          console.error('Notion save failed twice:', notionErr);
-          await sendMessage(
-            chatId,
-            `⚠️ Notion error: ${notionErr}\n\`\`\`\n${JSON.stringify(classified, null, 2)}\n\`\`\``
-          );
-          return res.status(200).json({ ok: true });
-        }
-      }
-    } else {
-      destination = 'Obsidian';
-      const noteForObsidian = {
-        ...classified,
-        raw_transcript: transcript,
-        telegram_timestamp: timestamp,
-        image: imageBuffer ? { buffer: imageBuffer, extension: '.jpg' } : undefined,
-      };
-
-      let result;
+    let result;
+    try {
+      result = await saveToObsidian(noteForObsidian);
+    } catch {
       try {
         result = await saveToObsidian(noteForObsidian);
-      } catch {
-        try {
-          result = await saveToObsidian(noteForObsidian);
-        } catch (err) {
-          const obsidianErr = err instanceof Error ? err.message : String(err);
-          console.error('Obsidian save failed twice:', obsidianErr);
-          await sendMessage(
-            chatId,
-            `⚠️ Obsidian sync error: ${obsidianErr}\n\`\`\`\n${JSON.stringify(classified, null, 2)}\n\`\`\``
-          );
-          return res.status(200).json({ ok: true });
-        }
+      } catch (err) {
+        const obsidianErr = err instanceof Error ? err.message : String(err);
+        console.error('Obsidian save failed twice:', obsidianErr);
+        await sendMessage(
+          chatId,
+          `⚠️ Obsidian sync error: ${obsidianErr}\n\`\`\`\n${JSON.stringify(classified, null, 2)}\n\`\`\``
+        );
+        return res.status(200).json({ ok: true });
       }
-      // Telegram's Markdown parser strips custom schemes like `obsidian://`,
-      // so route the Open link through an HTTPS bridge that 302s into the app.
-      const host = req.headers.host;
-      primaryUrl = host
-        ? `https://${host}/api/open?to=${encodeURIComponent(result.obsidianUri)}`
-        : result.obsidianUri;
-      secondaryUrl = result.githubUrl;
     }
+
+    // Telegram's Markdown parser strips custom schemes like `obsidian://`,
+    // so route the Open link through an HTTPS bridge that 302s into the app.
+    const host = req.headers.host;
+    const primaryUrl = host
+      ? `https://${host}/api/open?to=${encodeURIComponent(result.obsidianUri)}`
+      : result.obsidianUri;
+    const secondaryUrl = result.githubUrl;
 
     // ── Step 5: Reply with confirmation ────────────────────────────────────
     const isUpdate = classified.intent === 'update';
@@ -287,10 +240,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       reply += '📎 Screenshot attached\n';
     }
 
-    reply += `\n→ ${destination} · [Open](${primaryUrl})`;
-    if (secondaryUrl) {
-      reply += ` · [GitHub](${secondaryUrl})`;
-    }
+    reply += `\n→ Obsidian · [Open](${primaryUrl}) · [GitHub](${secondaryUrl})`;
 
     await sendMessage(chatId, reply, { parse_mode: 'Markdown' });
   } catch (err) {

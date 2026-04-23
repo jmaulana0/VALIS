@@ -1,4 +1,4 @@
-# VALIS Classification Prompt — v1.0
+# VALIS Classification Prompt — v1.1
 
 ## System Prompt
 
@@ -82,4 +82,5 @@ Output:
 
 ## Changelog
 
+- **v1.1** (2026-04-23): Reverted drift in `lib/classify.ts` that had silently added an `intent: create | update` field with `search_query` targeting. Since PR #4 archived Notion (which owned the find-and-append path), `intent: update` had no handler — it silently fell through to `create`, producing duplicate notes with no signal to the user. Dropped the intent field everywhere. Every capture is now a new note; merging/linking is deferred to the Connect primitive (wikilinks).
 - **v1.0** (2026-03-15): Initial prompt. Binary classification (action/idea), title generation, body cleanup, tagging, priority (actions), theme (ideas). Default-to-idea rule for ambiguous cases.

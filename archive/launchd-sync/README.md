@@ -19,9 +19,9 @@ audit-trail leg.
 1. **It wasn't working.** At archive time, the launchd agent had been
    failing every run with `fatal: Unable to read current working directory:
    Operation not permitted` — a macOS sandbox permission error because
-   launchd agents don't get Full Disk Access by default. The script also
-   expected `.git` at `00 - Inbox/.git` but the actual repo lives at the
-   vault root.
+   launchd agents don't get Full Disk Access by default. The script's
+   path (`$HOME/Documents/Obsidian/00 - Inbox/.git`) was correct; the
+   sandbox gate alone was enough to kill every invocation.
 2. **It was redundant.** The `obsidian-git` community plugin was
    configured with `autoPullInterval: 5, autoPullOnBoot: true,
    disablePush: true` — meaning the plugin was already doing the same
@@ -46,13 +46,17 @@ capture is still in GitHub history.
 ## How to restore (if you ever need to)
 
 1. Move the three files back to `scripts/`.
-2. Fix the path: the script expected `$HOME/Documents/Obsidian/00 - Inbox/.git`
-   but `.git` is at `$HOME/Documents/Obsidian/.git`. Update `VAULT_INBOX`
-   in `sync-to-obsidian.sh` before re-enabling.
-3. Grant the shell-running-launchd Full Disk Access in System Settings
+2. Grant the shell-running-launchd Full Disk Access in System Settings
    → Privacy & Security → Full Disk Access. This is the permission gate
    that was blocking every run.
-4. `bash scripts/install-sync.sh` to reload the agent.
+3. `bash scripts/install-sync.sh` to reload the agent.
+
+> Note: the Obsidian vault root contains a stub `.git/` dir (only an
+> `objects/` folder, no `config`/`HEAD`) left over from an aborted
+> `git init` at the vault root — that's what the memory warning
+> "never `git init` at the vault root" refers to. The real repo is
+> at `$HOME/Documents/Obsidian/00 - Inbox/.git` and points to
+> `jmaulana0/valis-obsidian-sync`.
 
 But you probably don't want to. `obsidian-git` already does this job
 reliably.

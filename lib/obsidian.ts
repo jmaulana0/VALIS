@@ -51,7 +51,11 @@ export async function saveToObsidian(note: NoteForObsidian): Promise<ObsidianSav
 
   const frontmatter = buildFrontmatter(note, date);
 
-  const bodyParts: string[] = [`# ${note.title}`, '', note.body];
+  const bodyParts: string[] = [`# ${note.title}`];
+  if (note.tags?.length) {
+    bodyParts.push('', note.tags.map((t) => `#${t}`).join(' '));
+  }
+  bodyParts.push('', note.body);
   if (imageFilename) {
     bodyParts.push('', `![[${imageFilename}]]`);
   }

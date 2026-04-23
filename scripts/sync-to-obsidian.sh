@@ -1,47 +1,26 @@
 #!/bin/zsh
-# sync-to-obsidian.sh — Pull new ideas from GitHub repo into Obsidian vault's Inbox
-# Run via launchd every 5 minutes, or manually.
+# sync-to-obsidian.sh — Pull new notes from GitHub into the Obsidian vault.
 #
-# Setup:
-#   1. Clone the sync repo:  git clone git@github.com:<you>/valis-obsidian-sync.git ~/valis-obsidian-sync
-#   2. Make executable:  chmod +x scripts/sync-to-obsidian.sh
-#   3. Install the launchd agent:  ./scripts/install-sync.sh
+# Topology: the Obsidian vault's "00 - Inbox" folder IS the sync repo
+# (jmaulana0/valis-obsidian-sync is cloned directly at that path). The
+# webhook writes new notes and images into the repo's inbox/ subfolder,
+# so `git pull` is all we need — no file-moving, no second clone.
+#
+# Run via launchd every 5 minutes (see install-sync.sh), or manually.
 
-SYNC_REPO="$HOME/valis-obsidian-sync"
-VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Vault"
-INBOX="$VAULT/00 - Inbox"
-LOG="$SYNC_REPO/sync.log"
+VAULT_INBOX="${VAULT_INBOX:-$HOME/Documents/Obsidian/00 - Inbox}"
+LOG="/tmp/valis-obsidian-sync.log"
 
-# Ensure repo exists
-if [ ! -d "$SYNC_REPO/.git" ]; then
-  echo "$(date): Sync repo not found at $SYNC_REPO — clone it first." >> "$LOG"
+if [ ! -d "$VAULT_INBOX/.git" ]; then
+  echo "$(date): No git repo at $VAULT_INBOX — aborting." >> "$LOG"
   exit 1
 fi
 
-# Pull latest from GitHub
-cd "$SYNC_REPO" || exit 1
-git pull --quiet origin main >> "$LOG" 2>&1
+cd "$VAULT_INBOX" || exit 1
 
-# Move any new files from inbox/ to the Obsidian vault
-if [ -d "$SYNC_REPO/inbox" ] && [ "$(ls -A "$SYNC_REPO/inbox/" 2>/dev/null)" ]; then
-  count=0
-  for file in "$SYNC_REPO/inbox/"*.md; do
-    [ -f "$file" ] || continue
-    basename="$(basename "$file")"
-    mv "$file" "$INBOX/$basename"
-    count=$((count + 1))
-  done
-
-  if [ $count -gt 0 ]; then
-    echo "$(date): Moved $count file(s) to Obsidian Inbox" >> "$LOG"
-
-    # Commit the removal so files aren't re-synced
-    cd "$SYNC_REPO" || exit 1
-    git add -A
-    git commit -m "Synced $count idea(s) to Obsidian" --quiet
-    git push --quiet origin main >> "$LOG" 2>&1
-  fi
-else
-  # Nothing to sync — stay quiet
-  :
+# Fast-forward only; if the vault has diverged (manual commits), log and stop
+# rather than merging or rebasing behind the user's back.
+if ! git pull --ff-only --quiet origin main >> "$LOG" 2>&1; then
+  echo "$(date): git pull --ff-only failed — vault may have diverged." >> "$LOG"
+  exit 1
 fi

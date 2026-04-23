@@ -6,7 +6,7 @@ VALIS (Voice-Activated Logging & Intelligent Sorting) is a Telegram bot that
 captures voice notes, transcribes them, classifies them as **actions** or
 **ideas**, and saves them to Obsidian. Zero manual sorting.
 
-- **Actions** and **Ideas** → Obsidian (via GitHub sync → iCloud vault)
+- **Actions** and **Ideas** → Obsidian (via GitHub → obsidian-git plugin → Obsidian Sync)
   The classifier still distinguishes actions vs ideas so the frontmatter and
   inbox organisation can differ, but both land in the same vault.
 
@@ -15,16 +15,21 @@ Core loop: **speak → transcribe → classify → enrich → write**
 ## Architecture
 
 ```
-Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Groq Llama 3.3 70B  →  GitHub → Obsidian
+Telegram Bot  →  Vercel Serverless  →  Groq Whisper  →  Groq Llama 3.3 70B  →  GitHub → Obsidian vault
 (capture)        (webhook handler)     (transcribe)     (classify + enrich)     (all notes)
 ```
 
 Single serverless function at `api/webhook.ts` handles the entire pipeline.
 
 **Obsidian sync flow:** Vercel writes `.md` files to `jmaulana0/valis-obsidian-sync`
-via GitHub API → launchd runs `scripts/sync-to-obsidian.sh` every 5 min →
-files land in `00 - Inbox/` of the iCloud Obsidian vault → existing
-`organize-inbox.sh` sorts them.
+via GitHub API → the `obsidian-git` plugin (inside Obsidian on the Mac)
+auto-pulls every 5 minutes → files land in the local vault → **Obsidian
+Sync** propagates them bidirectionally to phone and any other device.
+
+(Retired 2026-04-23: a launchd agent that ran `scripts/sync-to-obsidian.sh`
+every 5 min. It was failing silently due to a macOS sandbox permission error,
+and `obsidian-git` was already doing the same pull. See
+`archive/launchd-sync/README.md`.)
 
 ## Tech Stack
 
@@ -34,7 +39,7 @@ files land in `00 - Inbox/` of the iCloud Obsidian vault → existing
 | API | Vercel Serverless Function (TypeScript) |
 | Transcription | Groq Whisper `large-v3-turbo` |
 | Classification | Groq Llama 3.3 70B (`llama-3.3-70b-versatile`) |
-| Storage | GitHub API → Obsidian (iCloud vault via sync script) |
+| Storage | GitHub API → Obsidian vault (via `obsidian-git` pull + Obsidian Sync for cross-device) |
 
 ## Project Structure
 
@@ -63,8 +68,7 @@ VALIS/
 │       └── tune-classifier/
 │           └── SKILL.md        # Improve classification prompt
 ├── scripts/
-│   ├── sync-to-obsidian.sh         # Pulls ideas from GitHub → Obsidian vault
-│   └── com.valis.obsidian-sync.plist # launchd config (every 5 min)
+│   └── backfill-body-tags.mjs      # One-off: rewrite YAML-only tag notes to inline #tag pills
 ├── .env.example
 ├── package.json
 ├── tsconfig.json

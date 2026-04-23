@@ -56,15 +56,17 @@ vercel --prod
 curl "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/setWebhook?url=https://<YOUR_VERCEL_URL>/api/webhook&secret_token=<YOUR_WEBHOOK_SECRET>"
 ```
 
-### 6. (Optional) Obsidian sync for ideas
+### 6. Obsidian sync
 
-If you want ideas routed to Obsidian instead of Notion, set `GITHUB_TOKEN` and `GITHUB_OBSIDIAN_REPO` in your `.env`, then install the local sync agent:
+Set `GITHUB_TOKEN` and `GITHUB_OBSIDIAN_REPO` in your `.env`. The webhook
+writes notes into that GitHub repo. The local vault pulls from GitHub via
+the [`obsidian-git`](https://github.com/denolehov/obsidian-git) community
+plugin (configure `autoPullInterval: 5, autoPullOnBoot: true,
+disablePush: true` in the plugin settings). Cross-device sync (phone ↔
+Mac) uses **Obsidian Sync** — enable the core plugin and sign in.
 
-```bash
-./scripts/install-sync.sh
-```
-
-This generates and loads a launchd agent that pulls ideas from GitHub into your Obsidian vault every 5 minutes.
+The older launchd-based pull script was retired 2026-04-23. See
+`archive/launchd-sync/README.md` for history and restore instructions.
 
 ### 7. Send a voice message to your bot
 

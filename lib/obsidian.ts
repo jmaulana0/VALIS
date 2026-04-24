@@ -43,7 +43,7 @@ export async function saveToObsidian(note: NoteForObsidian): Promise<ObsidianSav
     await commitFileToGitHub({
       repo,
       token,
-      path: `inbox/${imageFilename}`,
+      path: `inbox/attachments/${imageFilename}`,
       content: note.image.buffer.toString('base64'),
       message: `Add ${note.type} image: ${note.title}`,
     });
